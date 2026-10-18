@@ -8,8 +8,7 @@ import type { HeatmapResponse } from '../lib/types'
 import { Notice } from './Notice'
 import './TimeScrubber.css'
 
-const LAST_HOUR = 48
-const TICK_HOURS = [0, 12, 24, 36, 48]
+const DEFAULT_LAST_HOUR = 48
 const PLAY_STEP_MS = 420
 
 interface TimeScrubberProps {
@@ -22,15 +21,17 @@ interface TimeScrubberProps {
 export function TimeScrubber({ heat, status, hour, onHour }: TimeScrubberProps) {
   const [playing, setPlaying] = useState(false)
   const ready = status === 'ready' && heat !== null
+  const lastHour = heat ? heat.hours - 1 : DEFAULT_LAST_HOUR
+  const tickHours = [0, 12, 24, 36].filter((tick) => tick < lastHour).concat(lastHour)
 
   useEffect(() => {
     if (!playing) return
     const timer = window.setInterval(() => {
-      onHour(Math.min(hour + 1, LAST_HOUR))
-      if (hour + 1 >= LAST_HOUR) setPlaying(false)
+      onHour(Math.min(hour + 1, lastHour))
+      if (hour + 1 >= lastHour) setPlaying(false)
     }, PLAY_STEP_MS)
     return () => window.clearInterval(timer)
-  }, [playing, hour, onHour])
+  }, [playing, hour, lastHour, onHour])
 
   if (status === 'failed') {
     return (
@@ -64,7 +65,7 @@ export function TimeScrubber({ heat, status, hour, onHour }: TimeScrubberProps) 
             disabled={!ready}
             aria-label={playing ? 'Pause forecast playback' : 'Play forecast forward'}
             onClick={() => {
-              if (!playing && hour >= LAST_HOUR) onHour(0)
+              if (!playing && hour >= lastHour) onHour(0)
               setPlaying((value) => !value)
             }}
           >
@@ -89,7 +90,7 @@ export function TimeScrubber({ heat, status, hour, onHour }: TimeScrubberProps) 
         className="scrubber__range"
         type="range"
         min={0}
-        max={LAST_HOUR}
+        max={lastHour}
         step={1}
         value={hour}
         disabled={!ready}
@@ -101,8 +102,8 @@ export function TimeScrubber({ heat, status, hour, onHour }: TimeScrubberProps) 
         }}
       />
       <div className="scrubber__ticks mono" aria-hidden="true">
-        {TICK_HOURS.map((tick) => (
-          <span key={tick} style={{ left: `${(tick / LAST_HOUR) * 100}%` }}>
+        {tickHours.map((tick) => (
+          <span key={tick} style={{ left: `${(tick / lastHour) * 100}%` }}>
             {tick === 0 ? 'Dep.' : `+${tick} h`}
           </span>
         ))}

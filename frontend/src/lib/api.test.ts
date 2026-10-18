@@ -18,7 +18,10 @@ function respond(status: number, payload: unknown) {
   )
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 describe('api client', () => {
   it('posts JSON to the analyze endpoint and returns the parsed body', async () => {
@@ -90,5 +93,58 @@ describe('api client', () => {
 
     expect(places).toHaveLength(1)
     expect(fetchMock.mock.calls[0][0]).toBe('/api/geocode?q=Denver%20%26%20Co')
+  })
+
+  it('gives up with a clear message when the server never answers', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            )
+          }),
+      ),
+    )
+
+    const pending = analyzeTrip(body).catch((e) => e)
+    await vi.advanceTimersByTimeAsync(91_000)
+    const error = await pending
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error.code).toBe('timeout')
+  })
+
+  it('still reports a caller abort as an abort, not a timeout', async () => {
+    const controller = new AbortController()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            )
+          }),
+      ),
+    )
+
+    const pending = analyzeTrip(body, controller.signal).catch((e) => e)
+    controller.abort()
+    const error = await pending
+
+    expect(error).not.toBeInstanceOf(ApiError)
+    expect(error.name).toBe('AbortError')
+  })
+
+  it('explains a successful response that is not JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>ok</html>', { status: 200 })))
+
+    const error = await analyzeTrip(body).catch((e) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error.code).toBe('server_error')
   })
 })

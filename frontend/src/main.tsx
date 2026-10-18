@@ -6,6 +6,7 @@ import './styles/tokens.css'
 import './styles/base.css'
 import { LEVELS, UNKNOWN_LEVEL } from './lib/risk'
 import App from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 // Risk colours live in one place (lib/risk.ts); expose them to CSS from there.
 for (const level of LEVELS) {
@@ -15,6 +16,8 @@ document.documentElement.style.setProperty('--risk-unknown', UNKNOWN_LEVEL.color
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary label="app">
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 )

@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowClockwise, CloudLightning, Truck } from '@phosphor-icons/react'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Notice } from './components/Notice'
 import { Recommendation } from './components/Recommendation'
 import { RiskGuide } from './components/RiskGuide'
@@ -46,30 +47,43 @@ interface View {
   focus: MapFocus | null
 }
 
+function freshView(analysis: AnalyzeResponse | null): View {
+  return {
+    forAnalysis: analysis,
+    selectedId: analysis?.recommendation.route_id ?? null,
+    hour: 0,
+    focus: null,
+  }
+}
+
+/** The stored view if it belongs to this analysis, otherwise a fresh one. */
+function viewFor(stored: View, analysis: AnalyzeResponse | null): View {
+  return stored.forAnalysis === analysis ? stored : freshView(analysis)
+}
+
+function statusMessage(phase: string, analysis: AnalyzeResponse | null): string {
+  if (phase === 'loading') return 'Analyzing routes'
+  if (!analysis) return ''
+  const best = analysis.routes.find((route) => route.id === analysis.recommendation.route_id)
+  return `Analysis complete. ${analysis.routes.length} routes. Recommended: ${best?.label ?? ''}.`
+}
+
 export default function App() {
   const { state, run } = useTrip()
   const { analysis } = state
-  const [stored, setStored] = useState<View>({
-    forAnalysis: null,
-    selectedId: null,
-    hour: 0,
-    focus: null,
-  })
+  const [stored, setStored] = useState<View>(() => freshView(null))
   const [lastBody, setLastBody] = useState<TripRequestBody | null>(null)
   const nonce = useRef(0)
   const results = useRef<HTMLDivElement>(null)
 
-  const view: View =
-    stored.forAnalysis === analysis
-      ? stored
-      : {
-          forAnalysis: analysis,
-          selectedId: analysis?.recommendation.route_id ?? null,
-          hour: 0,
-          focus: null,
-        }
-  const update = (patch: Partial<View>) => setStored({ ...view, ...patch })
-  const setHour = useCallback((hour: number) => setStored((previous) => ({ ...previous, hour })), [])
+  const view = viewFor(stored, analysis)
+  // Every change re-bases on the current analysis, so a stale view can never swallow it.
+  const update = useCallback(
+    (patch: Partial<View>) =>
+      setStored((previous) => ({ ...viewFor(previous, analysis), ...patch })),
+    [analysis],
+  )
+  const setHour = useCallback((hour: number) => update({ hour }), [update])
 
   // Bring the answer into view: on a phone it sits well below the form.
   useEffect(() => {
@@ -105,7 +119,11 @@ export default function App() {
           <TripForm loading={loading} serverErrors={state.error?.fields} onSubmit={submit} />
         </div>
 
-        <div className="desk__section desk__results" aria-live="polite" ref={results}>
+        <p className="visually-hidden" role="status">
+          {statusMessage(state.phase, analysis)}
+        </p>
+
+        <div className="desk__section desk__results" ref={results}>
           {loading && <ResultsSkeleton />}
 
           {state.phase === 'idle' && <EmptyResults />}
@@ -155,20 +173,29 @@ export default function App() {
       </aside>
 
       <main className="stage">
-        <Suspense fallback={<div className="stage__loading">Loading map</div>}>
-          <MapView
-            analysis={analysis}
-            heat={state.heat}
-            selectedId={view.selectedId}
-            hour={view.hour}
-            focus={view.focus}
-            busy={loading}
-            onSelectRoute={(selectedId) => update({ selectedId })}
-          />
-        </Suspense>
+        <ErrorBoundary label="map">
+          <Suspense fallback={<div className="stage__loading">Loading map</div>}>
+            <MapView
+              analysis={analysis}
+              heat={state.heat}
+              selectedId={view.selectedId}
+              hour={view.hour}
+              focus={view.focus}
+              busy={loading}
+              onSelectRoute={(selectedId) => update({ selectedId })}
+            />
+          </Suspense>
+        </ErrorBoundary>
         {analysis && (
           <div className="stage__scrubber">
-            <TimeScrubber heat={state.heat} status={state.heatStatus} hour={view.hour} onHour={setHour} />
+            <ErrorBoundary label="forecast panel">
+              <TimeScrubber
+                heat={state.heat}
+                status={state.heatStatus}
+                hour={view.hour}
+                onHour={setHour}
+              />
+            </ErrorBoundary>
           </div>
         )}
       </main>

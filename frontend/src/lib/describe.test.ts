@@ -36,6 +36,18 @@ describe('describeRisk', () => {
     expect(describeRisk(base)).toBe('Clear of High and Severe weather')
   })
 
+  it('never calls a route clear when part of it has no forecast', () => {
+    expect(describeRisk({ ...base, low_miles: 150, unknown_miles: 50 })).toBe(
+      'No High or Severe weather where a forecast exists, 50 mi without a forecast',
+    )
+  })
+
+  it('adds missing forecast miles after the worst conditions', () => {
+    expect(describeRisk({ ...base, severe_miles: 20, unknown_miles: 30 })).toBe(
+      '20 mi Severe, 30 mi without a forecast',
+    )
+  })
+
   it('ignores slivers under half a mile', () => {
     expect(describeRisk({ ...base, severe_miles: 0.3 })).toBe('Clear of High and Severe weather')
   })

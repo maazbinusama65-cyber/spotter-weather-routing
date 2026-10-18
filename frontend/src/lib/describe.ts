@@ -13,7 +13,14 @@ export function describeRisk(summary: RouteSummaryData): string {
   if (summary.no_travel_miles >= VISIBLE_MILES) parts.push(`${miles(summary.no_travel_miles)} No Travel`)
   if (summary.severe_miles >= VISIBLE_MILES) parts.push(`${miles(summary.severe_miles)} Severe`)
   if (summary.high_miles >= VISIBLE_MILES) parts.push(`${miles(summary.high_miles)} High`)
-  if (parts.length > 0) return parts.join(', ')
+  const unknown =
+    summary.unknown_miles >= VISIBLE_MILES ? `${miles(summary.unknown_miles)} without a forecast` : null
+  if (parts.length > 0) return [...parts, ...(unknown ? [unknown] : [])].join(', ')
+  if (unknown) {
+    const moderate =
+      summary.moderate_miles >= VISIBLE_MILES ? `, ${miles(summary.moderate_miles)} Moderate` : ''
+    return `No High or Severe weather where a forecast exists${moderate}, ${unknown}`
+  }
   if (summary.moderate_miles >= VISIBLE_MILES) {
     return `No High or Severe weather, ${miles(summary.moderate_miles)} Moderate`
   }

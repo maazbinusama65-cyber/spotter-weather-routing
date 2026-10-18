@@ -21,7 +21,39 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; fields?: Record<string, string> }
 }
 
+const REQUEST_TIMEOUT_MS = 90_000
+
+/** The caller's signal plus a deadline, so a hung server cannot leave the UI waiting forever. */
+function withDeadline(signal?: AbortSignal) {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, REQUEST_TIMEOUT_MS)
+  signal?.addEventListener('abort', () => controller.abort(), { once: true })
+  return {
+    signal: controller.signal,
+    timedOut: () => timedOut,
+    done: () => window.clearTimeout(timer),
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const deadline = withDeadline(init.signal ?? undefined)
+  try {
+    return await send<T>(path, { ...init, signal: deadline.signal })
+  } catch (error) {
+    if (deadline.timedOut()) {
+      throw new ApiError('timeout', 'The server took too long to respond. Please try again.')
+    }
+    throw error
+  } finally {
+    deadline.done()
+  }
+}
+
+async function send<T>(path: string, init: RequestInit): Promise<T> {
   let response: Response
   try {
     response = await fetch(path, init)
@@ -30,7 +62,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError('network_error', 'Could not reach the server. Check your connection.')
   }
 
-  if (response.ok) return (await response.json()) as T
+  if (response.ok) {
+    try {
+      return (await response.json()) as T
+    } catch {
+      throw new ApiError('server_error', 'The server sent a response the app could not read.')
+    }
+  }
 
   const envelope = (await response.json().catch(() => null)) as ErrorEnvelope | null
   if (envelope?.error?.message) {

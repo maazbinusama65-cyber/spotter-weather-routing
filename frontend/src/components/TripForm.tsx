@@ -59,6 +59,26 @@ function tomorrowMorning(): string {
 
 const EMPTY_PLACE: PlaceValue = { text: '', place: null }
 
+/** The API names fields after its own parameters; the form names them after its inputs. */
+const SERVER_FIELD_TO_INPUT: Record<string, keyof TripFormErrors> = {
+  origin: 'origin',
+  destination: 'destination',
+  departure: 'departure',
+  load_lb: 'load',
+}
+
+function visibleServerErrors(
+  source: Record<string, string> | undefined,
+  dismissed: string[],
+): TripFormErrors {
+  const visible: TripFormErrors = {}
+  for (const [field, message] of Object.entries(source ?? {})) {
+    const input = SERVER_FIELD_TO_INPUT[field]
+    if (input && !dismissed.includes(input)) visible[input] = message
+  }
+  return visible
+}
+
 interface TripFormProps {
   loading: boolean
   /** Field messages from the server, shown next to the matching input. */
@@ -66,7 +86,7 @@ interface TripFormProps {
   onSubmit: (body: TripRequestBody) => void
 }
 
-export function TripForm({ loading, serverErrors = {}, onSubmit }: TripFormProps) {
+export function TripForm({ loading, serverErrors, onSubmit }: TripFormProps) {
   const [values, setValues] = useState<TripFormValues>(() => ({
     origin: EMPTY_PLACE,
     destination: EMPTY_PLACE,
@@ -75,9 +95,16 @@ export function TripForm({ loading, serverErrors = {}, onSubmit }: TripFormProps
     interval: 25,
   }))
   const [errors, setErrors] = useState<TripFormErrors>({})
+  // Inputs the user has edited since the server last complained: their old message is stale.
+  const [dismissed, setDismissed] = useState<{
+    source: Record<string, string> | undefined
+    inputs: string[]
+  }>({ source: serverErrors, inputs: [] })
+  const dismissedInputs = dismissed.source === serverErrors ? dismissed.inputs : []
 
   const update = (patch: Partial<TripFormValues>) => {
     setValues((current) => ({ ...current, ...patch }))
+    setDismissed({ source: serverErrors, inputs: [...dismissedInputs, ...Object.keys(patch)] })
     setErrors((current) => {
       const next = { ...current }
       for (const key of Object.keys(patch)) delete next[key as keyof TripFormErrors]
@@ -96,7 +123,7 @@ export function TripForm({ loading, serverErrors = {}, onSubmit }: TripFormProps
     onSubmit(result.body)
   }
 
-  const shown: TripFormErrors = { ...serverErrors, ...errors }
+  const shown: TripFormErrors = { ...visibleServerErrors(serverErrors, dismissedInputs), ...errors }
   const loadNumber = Number(values.load)
   const activePreset = LOAD_PRESETS.find((preset) => preset.value === values.load)
 

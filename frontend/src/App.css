@@ -147,3 +147,7 @@
     display: none;
   }
 }
+
+.boundary {
+  padding: 16px;
+}

@@ -110,7 +110,7 @@ describe('PlaceField', () => {
 
     await user.type(screen.getByRole('combobox', { name: 'From' }), 'Boise')
 
-    await waitFor(() => expect(screen.getByText(/search is unavailable/i)).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText(/search is unavailable/i).length).toBeGreaterThan(0))
   })
 
   it('says when nothing matches', async () => {
@@ -120,7 +120,7 @@ describe('PlaceField', () => {
 
     await user.type(screen.getByRole('combobox', { name: 'From' }), 'Zzzzz')
 
-    expect(await screen.findByText(/no matches/i)).toBeTruthy()
+    expect((await screen.findAllByText(/no matches/i)).length).toBeGreaterThan(0)
   })
 
   it('shows a validation error and marks the input invalid', () => {
@@ -128,5 +128,50 @@ describe('PlaceField', () => {
 
     expect(screen.getByRole('alert').textContent).toBe('Enter the starting city or address')
     expect(screen.getByRole('combobox', { name: 'From' }).getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('never selects a suggestion that belongs to older text', async () => {
+    const dal: Place = { label: 'Dal Lake, India', lat: 34.1, lon: 74.8 }
+    const dallas: Place = { label: 'Dallas, TX, USA', lat: 32.78, lon: -96.8 }
+    search.mockImplementation(async (query: string) => (query === 'Dal' ? [dal] : [dallas]))
+    const onPlace = vi.fn()
+    const user = userEvent.setup()
+    render(<Harness onPlace={onPlace} />)
+    const input = screen.getByRole('combobox', { name: 'From' })
+    await user.type(input, 'Dal')
+    await screen.findByRole('option', { name: dal.label })
+
+    await user.type(input, 'las{Enter}')
+
+    expect(onPlace).not.toHaveBeenCalledWith(dal)
+    expect(screen.queryByRole('option', { name: dal.label })).toBeNull()
+    expect(await screen.findByRole('option', { name: dallas.label })).toBeTruthy()
+    expect(search).toHaveBeenLastCalledWith('Dallas', expect.anything())
+  })
+
+  it('does not search again for old text after a suggestion is chosen and edited', async () => {
+    search.mockResolvedValue([denver])
+    const user = userEvent.setup()
+    render(<Harness />)
+    const input = screen.getByRole('combobox', { name: 'From' })
+    await user.type(input, 'Den')
+    await user.click(await screen.findByRole('option', { name: denver.label }))
+    search.mockClear()
+
+    await user.type(input, ' x')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(search).not.toHaveBeenCalled()
+  })
+
+  it('announces how many suggestions there are for screen readers', async () => {
+    search.mockResolvedValue([denver, county])
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.type(screen.getByRole('combobox', { name: 'From' }), 'Den')
+    await screen.findByRole('option', { name: denver.label })
+
+    expect(screen.getByRole('status').textContent).toBe('2 suggestions available')
   })
 })

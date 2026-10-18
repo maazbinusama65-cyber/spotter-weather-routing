@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { CheckCircle, MapPin } from '@phosphor-icons/react'
 import { searchPlaces } from '../lib/api'
 import type { Place } from '../lib/types'
@@ -16,11 +16,11 @@ interface PlaceFieldProps {
   onChange: (text: string, place: Place | null) => void
 }
 
+/** Each state remembers the query it answers, so results for old text are never shown. */
 type SearchState =
   | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'done'; places: Place[] }
-  | { status: 'failed' }
+  | { status: 'done'; query: string; places: Place[] }
+  | { status: 'failed'; query: string }
 
 /** Text input with place suggestions, following the ARIA combobox pattern. */
 export function PlaceField({ label, text, place, error, onChange }: PlaceFieldProps) {
@@ -30,48 +30,56 @@ export function PlaceField({ label, text, place, error, onChange }: PlaceFieldPr
   const [active, setActive] = useState(-1)
   const [search, setSearch] = useState<SearchState>({ status: 'idle' })
   const debounced = useDebouncedValue(text.trim(), DEBOUNCE_MS)
-  const skipNextSearch = useRef(false)
+  const query = text.trim()
 
   useEffect(() => {
-    if (place || debounced.length < MIN_QUERY || skipNextSearch.current) {
-      skipNextSearch.current = false
-      return
-    }
+    // Wait until typing has paused: `debounced` lags `query` while the user is still typing.
+    if (place || query.length < MIN_QUERY || debounced !== query) return
     const controller = new AbortController()
-    setSearch({ status: 'loading' })
-    searchPlaces(debounced, controller.signal)
+    searchPlaces(query, controller.signal)
       .then((places) => {
-        setSearch({ status: 'done', places })
+        setSearch({ status: 'done', query, places })
         setActive(places.length > 0 ? 0 : -1)
       })
       .catch((reason: unknown) => {
         if (reason instanceof DOMException && reason.name === 'AbortError') return
-        setSearch({ status: 'failed' })
+        setSearch({ status: 'failed', query })
       })
     return () => controller.abort()
-  }, [debounced, place])
+  }, [debounced, query, place])
 
-  const places = search.status === 'done' ? search.places : []
-  const showList = open && !place && text.trim().length >= MIN_QUERY && search.status !== 'idle'
+  const current = search.status !== 'idle' && search.query === query ? search : null
+  const places = current?.status === 'done' ? current.places : []
+  const showPanel = open && !place && query.length >= MIN_QUERY
+  const showList = showPanel && places.length > 0
+  const note =
+    current?.status === 'failed'
+      ? 'Search is unavailable. You can still type a city and state.'
+      : current?.status === 'done' && places.length === 0
+        ? 'No matches. Try adding the state.'
+        : 'Searching' // no answer yet for what is typed now
+  const announcement = showList ? `${places.length} suggestions available` : showPanel ? note : ''
+
+  useEffect(() => {
+    if (showList && active >= 0) {
+      document.getElementById(`${id}-option-${active}`)?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [showList, active, id])
 
   function choose(choice: Place) {
-    skipNextSearch.current = true
     onChange(choice.label, choice)
     setOpen(false)
     setSearch({ status: 'idle' })
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (!showList) {
-      if (event.key === 'ArrowDown' && places.length > 0) setOpen(true)
-      return
-    }
+    if (!showList) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setActive((index) => (places.length === 0 ? -1 : (index + 1) % places.length))
+      setActive((index) => (index + 1) % places.length)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      setActive((index) => (places.length === 0 ? -1 : (index - 1 + places.length) % places.length))
+      setActive((index) => (index - 1 + places.length) % places.length)
     } else if (event.key === 'Enter' && active >= 0 && places[active]) {
       event.preventDefault()
       choose(places[active])
@@ -95,13 +103,14 @@ export function PlaceField({ label, text, place, error, onChange }: PlaceFieldPr
           autoComplete="off"
           spellCheck={false}
           aria-expanded={showList}
-          aria-controls={listId}
+          aria-controls={showList ? listId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={showList && active >= 0 ? `${id}-option-${active}` : undefined}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
           value={text}
           onChange={(event) => {
+            setActive(-1)
             onChange(event.target.value, null)
             setOpen(true)
           }}
@@ -110,24 +119,12 @@ export function PlaceField({ label, text, place, error, onChange }: PlaceFieldPr
           onKeyDown={onKeyDown}
         />
         {place && (
-          <CheckCircle
-            className="place-field__check"
-            size={18}
-            weight="fill"
-            aria-label="Location confirmed"
-          />
+          <span className="place-field__check" role="img" aria-label="Location confirmed">
+            <CheckCircle size={18} weight="fill" aria-hidden="true" />
+          </span>
         )}
         {showList && (
           <ul className="place-field__list" id={listId} role="listbox" aria-label={`${label} suggestions`}>
-            {search.status === 'loading' && <li className="place-field__note">Searching</li>}
-            {search.status === 'failed' && (
-              <li className="place-field__note">
-                Search is unavailable. You can still type a city and state.
-              </li>
-            )}
-            {search.status === 'done' && places.length === 0 && (
-              <li className="place-field__note">No matches. Try adding the state.</li>
-            )}
             {places.map((option, index) => (
               <li
                 key={`${option.label}-${option.lat}-${option.lon}`}
@@ -146,6 +143,10 @@ export function PlaceField({ label, text, place, error, onChange }: PlaceFieldPr
             ))}
           </ul>
         )}
+        {showPanel && !showList && <div className="place-field__list place-field__note">{note}</div>}
+        <span className="visually-hidden" role="status">
+          {announcement}
+        </span>
       </div>
       {error && (
         <p className="field__error" id={`${id}-error`} role="alert">

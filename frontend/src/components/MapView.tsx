@@ -25,6 +25,8 @@ setWorkerUrl(workerUrl)
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron'
 const STYLE_TIMEOUT_MS = 15000
+// With no basemap the routes and weather still draw, on a plain background.
+const BLANK_STYLE = { version: 8 as const, sources: {}, layers: [] }
 const US_CENTER: [number, number] = [-97.5, 39.2]
 const HEAT_RADIUS_MILES = 30
 const REFERENCE_LATITUDE = 39
@@ -244,11 +246,19 @@ export default function MapView({
       }
       setReady(true)
     })
+
     // A single missing tile is normal; only a style that never arrives means no basemap.
-    const styleTimeout = window.setTimeout(() => setTilesFailed(true), STYLE_TIMEOUT_MS)
+    const showBlankBasemap = () => {
+      setTilesFailed(true)
+      map.setStyle(BLANK_STYLE)
+    }
+    const styleTimeout = window.setTimeout(showBlankBasemap, STYLE_TIMEOUT_MS)
     map.once('style.load', () => window.clearTimeout(styleTimeout))
     map.on('error', (event) => {
-      if (String(event.error?.message ?? '').includes(STYLE_URL)) setTilesFailed(true)
+      if (String(event.error?.message ?? '').includes(STYLE_URL)) {
+        window.clearTimeout(styleTimeout)
+        showBlankBasemap()
+      }
     })
 
     return () => {
@@ -320,7 +330,7 @@ export default function MapView({
       )}
       {tilesFailed && (
         <div className="map__fallback" role="alert">
-          The map background could not be loaded. Routes and results still work.
+          The map background could not be loaded. Routes and weather are still shown.
         </div>
       )}
     </div>

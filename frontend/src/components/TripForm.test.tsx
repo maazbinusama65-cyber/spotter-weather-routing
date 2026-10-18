@@ -106,4 +106,13 @@ describe('TripForm', () => {
 
     expect(screen.getByRole('alert').textContent).toMatch(/15-day weather forecast/)
   })
+
+  it('clears a server message as soon as the user edits that field', async () => {
+    const { user } = setup({ serverErrors: { load_lb: 'load_lb must be a number' } })
+    expect(screen.getByRole('alert').textContent).toMatch(/load_lb/)
+
+    await user.type(screen.getByLabelText('Load weight'), '0')
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
 })
