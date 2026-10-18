@@ -8,7 +8,9 @@ import {
   type GeoJSONSource,
   type LineLayerSpecification,
   type MapLayerMouseEvent,
+  setWorkerUrl,
 } from 'maplibre-gl'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { boundsOf, milesToPixels } from '../lib/geo'
 import { heatFeatures } from '../lib/heat'
@@ -18,9 +20,13 @@ import type { AnalyzeResponse, HeatmapResponse } from '../lib/types'
 import { buildCheckpointPopup } from './popupContent'
 import './MapView.css'
 
+// Bundlers rewrite import.meta.url, so MapLibre cannot find its worker on its own.
+setWorkerUrl(workerUrl)
+
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron'
+const STYLE_TIMEOUT_MS = 15000
 const US_CENTER: [number, number] = [-97.5, 39.2]
-const HEAT_RADIUS_MILES = 21
+const HEAT_RADIUS_MILES = 30
 const REFERENCE_LATITUDE = 39
 const ROUTE_INK = '#17304f'
 const ROUTE_MUTED = '#6f7f96'
@@ -43,6 +49,11 @@ interface MapViewProps {
 }
 
 type Source = 'heat' | 'routes' | 'checkpoints'
+
+/** Space to keep clear at the bottom of the map for the forecast panel (smaller on phones). */
+function forecastPanelClearance(): number {
+  return window.matchMedia('(max-width: 900px)').matches ? 150 : 250
+}
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -85,7 +96,7 @@ function addLayers(map: MapLibreMap) {
         'circle-radius': heatRadius(),
         'circle-color': levelColorExpression,
         'circle-opacity': ['match', ['get', 'level'], 1, 0.38, 2, 0.5, 3, 0.62, 4, 0.74, 0.13],
-        'circle-blur': 0.9,
+        'circle-blur': 1,
         'circle-pitch-alignment': 'map',
       },
     },
@@ -126,10 +137,21 @@ function addLayers(map: MapLibreMap) {
     source: 'checkpoints',
     layout: { 'circle-sort-key': ['get', 'order'] },
     paint: {
-      'circle-radius': ['case', ['==', ['get', 'selected'], 1], 6.5, 4],
+      // Small at national zoom so the route line stays visible, larger when zoomed in.
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        3,
+        ['case', ['==', ['get', 'selected'], 1], 2.5, 1.8],
+        6,
+        ['case', ['==', ['get', 'selected'], 1], 4.5, 3],
+        10,
+        ['case', ['==', ['get', 'selected'], 1], 7, 4.5],
+      ],
       'circle-color': levelColorExpression,
       'circle-stroke-color': '#ffffff',
-      'circle-stroke-width': ['case', ['==', ['get', 'selected'], 1], 2, 1],
+      'circle-stroke-width': ['case', ['==', ['get', 'selected'], 1], 1.5, 1],
       'circle-opacity': ['case', ['==', ['get', 'selected'], 1], 1, 0.8],
     },
   })
@@ -203,7 +225,8 @@ export default function MapView({
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
     mapRef.current = map
 
-    map.on('load', () => {
+    // Add our layers as soon as the style is ready, without waiting for every tile.
+    map.once('style.load', () => {
       addLayers(map)
 
       map.on('click', 'checkpoints', (event: MapLayerMouseEvent) => {
@@ -221,11 +244,15 @@ export default function MapView({
       }
       setReady(true)
     })
-    map.on('error', () => {
-      if (!map.isStyleLoaded()) setTilesFailed(true)
+    // A single missing tile is normal; only a style that never arrives means no basemap.
+    const styleTimeout = window.setTimeout(() => setTilesFailed(true), STYLE_TIMEOUT_MS)
+    map.once('style.load', () => window.clearTimeout(styleTimeout))
+    map.on('error', (event) => {
+      if (String(event.error?.message ?? '').includes(STYLE_URL)) setTilesFailed(true)
     })
 
     return () => {
+      window.clearTimeout(styleTimeout)
       popup.current?.remove()
       markers.current.forEach((marker) => marker.remove())
       markers.current = []
@@ -269,7 +296,7 @@ export default function MapView({
     const bounds = boundsOf(allRouteCoordinates(analysis))
     if (bounds) {
       map.fitBounds(bounds, {
-        padding: { top: 70, right: 50, bottom: 250, left: 50 },
+        padding: { top: 60, right: 40, bottom: forecastPanelClearance(), left: 40 },
         duration: prefersReducedMotion() ? 0 : 900,
         maxZoom: 9,
       })

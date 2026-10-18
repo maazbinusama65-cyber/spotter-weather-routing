@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowClockwise, CloudLightning, Truck } from '@phosphor-icons/react'
 import { Notice } from './components/Notice'
 import { Recommendation } from './components/Recommendation'
@@ -57,6 +57,7 @@ export default function App() {
   })
   const [lastBody, setLastBody] = useState<TripRequestBody | null>(null)
   const nonce = useRef(0)
+  const results = useRef<HTMLDivElement>(null)
 
   const view: View =
     stored.forAnalysis === analysis
@@ -69,6 +70,13 @@ export default function App() {
         }
   const update = (patch: Partial<View>) => setStored({ ...view, ...patch })
   const setHour = useCallback((hour: number) => setStored((previous) => ({ ...previous, hour })), [])
+
+  // Bring the answer into view: on a phone it sits well below the form.
+  useEffect(() => {
+    if (!analysis) return
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    results.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  }, [analysis])
 
   const submit = useCallback(
     (body: TripRequestBody) => {
@@ -97,7 +105,7 @@ export default function App() {
           <TripForm loading={loading} serverErrors={state.error?.fields} onSubmit={submit} />
         </div>
 
-        <div className="desk__section desk__results" aria-live="polite">
+        <div className="desk__section desk__results" aria-live="polite" ref={results}>
           {loading && <ResultsSkeleton />}
 
           {state.phase === 'idle' && <EmptyResults />}

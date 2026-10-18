@@ -44,9 +44,9 @@ const EXAMPLES: readonly Example[] = [
     destination: { label: 'Salt Lake City, UT, USA', lat: 40.7608, lon: -111.891 },
   },
   {
-    label: 'Minneapolis to Kansas City',
-    origin: { label: 'Minneapolis, MN, USA', lat: 44.9778, lon: -93.265 },
-    destination: { label: 'Kansas City, MO, USA', lat: 39.0997, lon: -94.5786 },
+    label: 'Miami to Orlando',
+    origin: { label: 'Miami, FL, USA', lat: 25.7617, lon: -80.1918 },
+    destination: { label: 'Orlando, FL, USA', lat: 28.5384, lon: -81.3789 },
   },
 ]
 

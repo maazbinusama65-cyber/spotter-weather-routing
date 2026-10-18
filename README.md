@@ -31,6 +31,25 @@ npm install
 npm run dev
 ```
 
+## Frontend
+
+Map-first interface: a control desk on the left, the map and a forecast panel on the right (stacked on phones).
+
+- **Trip form:** place search with suggestions, departure time (read in the starting point's time zone), load weight with presets and a live note on which load rules it triggers, and how often to check weather. Three one-click examples.
+- **Results:** a recommendation with the reason, then up to three routes with distance, drive time, arrival time, a bar of miles by risk level, and a strip of every checkpoint. Click a route or a checkpoint to focus it on the map.
+- **Map:** routes with risk-coloured checkpoints and popups (arrival time, wind, rain, snow, why the level was chosen). Weather is drawn under the place names so labels stay readable.
+- **Forecast slider:** 0 to 48 hours from departure over the corridor heatmap, with play, a reset to departure, and a count of corridor cells at each risk level for the chosen hour. Scrubbing only changes which character of each point's `levels` string is read, so it never waits on the network.
+- Loading skeletons, empty and error states, keyboard-accessible controls, `prefers-reduced-motion` respected, light theme.
+
+Stack: React, TypeScript, Vite, MapLibre GL (OpenFreeMap tiles, no key), Phosphor icons, Geist fonts bundled locally.
+
+```bash
+cd frontend
+npm run dev      # http://localhost:5173, proxies /api to Django on :8000
+npm test         # vitest
+npm run build    # production bundle, served by Django from frontend/dist
+```
+
 ## API
 
 | Method | Path | Purpose |
