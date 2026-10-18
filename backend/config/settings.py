@@ -64,7 +64,12 @@ REST_FRAMEWORK = {
     "UNAUTHENTICATED_USER": None,
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "analyze": "10/min", "geocode": "60/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "analyze": "10/min",
+        "heatmap": "10/min",
+        "geocode": "60/min",
+    },
     "EXCEPTION_HANDLER": "api.errors.api_exception_handler",
     # Trusted proxy hops in front of Django; stops clients spoofing X-Forwarded-For.
     "NUM_PROXIES": int(os.getenv("DJANGO_NUM_PROXIES", "1" if IS_PRODUCTION else "0")),

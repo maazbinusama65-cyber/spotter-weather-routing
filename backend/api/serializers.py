@@ -55,12 +55,11 @@ class PlaceField(serializers.Field):
         return value
 
 
-class AnalyzeRequestSerializer(serializers.Serializer):
+class TripRequestSerializer(serializers.Serializer):
     origin = PlaceField()
     destination = PlaceField()
     departure = serializers.CharField()
     load_lb = serializers.FloatField(min_value=0, max_value=MAX_LOAD_LB)
-    interval_miles = serializers.IntegerField()
 
     def validate_departure(self, value: str) -> datetime:
         try:
@@ -72,6 +71,10 @@ class AnalyzeRequestSerializer(serializers.Serializer):
         if not MIN_DEPARTURE_YEAR <= parsed.year <= MAX_DEPARTURE_YEAR:
             raise serializers.ValidationError("Departure year is out of range")
         return parsed
+
+
+class AnalyzeRequestSerializer(TripRequestSerializer):
+    interval_miles = serializers.IntegerField()
 
     def validate_interval_miles(self, value: int) -> int:
         if value not in ALLOWED_INTERVALS:

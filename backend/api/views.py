@@ -7,8 +7,9 @@ from rest_framework.throttling import AnonRateThrottle
 from .errors import error_response
 from .providers.factory import get_providers
 from .providers.types import ProviderError, RouteNotFound, RoutingProvider
-from .serializers import AnalyzeRequestSerializer, PlaceInput
-from .services.present import present_analysis
+from .serializers import AnalyzeRequestSerializer, PlaceInput, TripRequestSerializer
+from .services.heatmap import build_heatmap
+from .services.present import present_analysis, present_heatmap
 from .services.trip import TripRequest, TripValidationError, analyze_trip
 
 MIN_GEOCODE_QUERY = 2
@@ -23,6 +24,10 @@ class AnalyzeThrottle(_Throttle):
     scope = "analyze"  # each analysis makes several upstream calls
 
 
+class HeatmapThrottle(_Throttle):
+    scope = "heatmap"  # fetches weather for up to 150 locations
+
+
 class GeocodeThrottle(_Throttle):
     scope = "geocode"
 
@@ -34,10 +39,12 @@ def health(request):
     return Response({"status": "ok"})
 
 
-@api_view(["POST"])
-@throttle_classes([AnalyzeThrottle])
-def analyze(request):
-    serializer = AnalyzeRequestSerializer(data=request.data)
+HEATMAP_INTERVAL_MILES = 25  # the heatmap samples its own grid; the interval is unused
+
+
+def _run_trip(request, serializer_class, action):
+    """Validate the body, resolve places, run ``action`` and map failures to HTTP."""
+    serializer = serializer_class(data=request.data)
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
 
@@ -48,16 +55,35 @@ def analyze(request):
             destination=_resolve_place(routing, data["destination"]),
             departure=data["departure"],
             load_lb=data["load_lb"],
-            interval_miles=data["interval_miles"],
+            interval_miles=data.get("interval_miles", HEATMAP_INTERVAL_MILES),
         )
-        analysis = analyze_trip(trip, routing, weather)
+        return Response(action(trip, routing, weather))
     except TripValidationError as error:
         return error_response("invalid_trip", str(error), status.HTTP_400_BAD_REQUEST)
     except RouteNotFound as error:
         return error_response("no_route", str(error), status.HTTP_400_BAD_REQUEST)
     except ProviderError as error:
         return error_response("provider_error", str(error), status.HTTP_502_BAD_GATEWAY)
-    return Response(present_analysis(analysis))
+
+
+@api_view(["POST"])
+@throttle_classes([AnalyzeThrottle])
+def analyze(request):
+    return _run_trip(
+        request,
+        AnalyzeRequestSerializer,
+        lambda trip, routing, weather: present_analysis(analyze_trip(trip, routing, weather)),
+    )
+
+
+@api_view(["POST"])
+@throttle_classes([HeatmapThrottle])
+def heatmap(request):
+    return _run_trip(
+        request,
+        TripRequestSerializer,
+        lambda trip, routing, weather: present_heatmap(build_heatmap(trip, routing, weather)),
+    )
 
 
 @api_view(["GET"])

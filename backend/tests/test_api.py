@@ -245,3 +245,76 @@ def test_spoofed_forwarded_for_headers_do_not_bypass_the_throttle(client, provid
     ]
 
     assert statuses.count(429) >= 1
+
+
+def heatmap_body(**overrides):
+    payload = body(**overrides)
+    payload.pop("interval_miles", None)  # the heatmap does not use the sampling interval
+    return payload
+
+
+def post_heatmap(client, **overrides):
+    return client.post("/api/heatmap", heatmap_body(**overrides), format="json")
+
+
+def test_heatmap_returns_a_corridor_grid_with_a_48_hour_series_per_point(client, providers):
+    response = post_heatmap(client)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["hours"] == 49
+    assert data["start"].endswith("Z")
+    assert data["timezone"] == "UTC"
+    assert [lvl["label"] for lvl in data["risk_levels"]][0] == "Low"
+    assert len(data["points"]) > 10
+    point = data["points"][0]
+    assert set(point) == {"lat", "lon", "levels"}
+    assert all(len(p["levels"]) == 49 for p in data["points"])
+    assert data["warnings"] == []
+
+
+def test_heatmap_payload_stays_small(client, providers):
+    assert len(post_heatmap(client).content) < 40_000
+
+
+def test_heatmap_accepts_the_same_places_and_validation_as_analyze(client, providers):
+    response = post_heatmap(client, origin={"lat": 95, "lon": 0})
+
+    assert response.status_code == 400
+    assert "origin" in response.json()["error"]["fields"]
+
+
+def test_heatmap_trip_problems_are_a_400(client, providers):
+    response = post_heatmap(client, departure=(datetime.now(UTC) + timedelta(days=40)).isoformat())
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_trip"
+
+
+def test_heatmap_provider_failure_is_a_502(client, providers):
+    routing, _ = providers
+    routing.fail_base = True
+
+    assert post_heatmap(client).status_code == 502
+
+
+def test_heatmap_route_not_found_is_a_400(client, providers):
+    from api.providers.types import RouteNotFound
+
+    routing, _ = providers
+    routing.base_error = RouteNotFound("No drivable route found for those points")
+
+    response = post_heatmap(client)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "no_route"
+
+
+def test_heatmap_is_post_only(client, providers):
+    assert client.get("/api/heatmap").status_code == 405
+
+
+def test_heatmap_is_rate_limited(client, providers):
+    statuses = [post_heatmap(client).status_code for _ in range(12)]
+
+    assert 429 in statuses
