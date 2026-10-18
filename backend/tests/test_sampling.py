@@ -138,6 +138,9 @@ def test_zero_length_route_is_rejected():
 
 def test_duration_profile_must_match_coordinates():
     with pytest.raises(ValueError, match="cumulative_duration_s"):
-        RouteGeometry(
-            coordinates=((0, 0), (0, 1)), duration_s=10, cumulative_duration_s=(0, 5, 10)
-        )
+        RouteGeometry(coordinates=((0, 0), (0, 1)), duration_s=10, cumulative_duration_s=(0, 5, 10))
+
+
+def test_negative_duration_is_rejected():
+    with pytest.raises(ValueError, match="duration"):
+        RouteGeometry(coordinates=((0, 0), (0, 1)), duration_s=-1)

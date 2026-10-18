@@ -81,10 +81,7 @@ def _reason(
     if level == RiskLevel.LOW or driver is None:
         return "Conditions are low risk"
     if load_escalated:
-        return (
-            f"{level.label}: wind {sample.wind_mph:g} mph is risky for a "
-            f"{load_lb:,.0f} lb load"
-        )
+        return f"{level.label}: wind {sample.wind_mph:g} mph is risky for a {load_lb:,.0f} lb load"
     readings = {
         "wind": f"wind {sample.wind_mph:g} mph",
         "rain": f"rain {sample.rain_in_hr:g} in/hr",
