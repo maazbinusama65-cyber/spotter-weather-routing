@@ -4,6 +4,7 @@ The API key travels in the Authorization header, never in the URL, and never rea
 the browser.
 """
 
+import logging
 from collections.abc import Sequence
 
 import httpx
@@ -13,10 +14,14 @@ from engine.sampling import RouteGeometry
 
 from .types import Place, ProviderError, RouteNotFound, RouteOption
 
+logger = logging.getLogger(__name__)
+
 BASE_URL = "https://api.openrouteservice.org"
 HGV_PROFILE = "driving-hgv"
 GEOCODE_RESULTS = 5
 MAX_VIA_ROADS = 3
+# ORS error codes meaning "no route / no routable point" rather than a bad request
+NO_ROUTE_ERROR_CODES = {2009, 2010}
 
 
 class OrsClient:
@@ -55,7 +60,8 @@ class OrsClient:
 
     def _request(self, method: str, path: str, unroutable_is_not_found: bool = True, **kwargs):
         if not self._api_key:
-            raise ProviderError("Routing service is not configured (missing ORS_API_KEY)")
+            logger.error("ORS_API_KEY is not set; routing is disabled")
+            raise ProviderError("Routing service is not configured")
         try:
             response = self._http.request(
                 method,
@@ -70,17 +76,30 @@ class OrsClient:
 
         status = response.status_code
         if status in (401, 403):
-            raise ProviderError("Routing service rejected the API key")
+            # Operator problem: details go to the log, users only see a generic message.
+            logger.error("OpenRouteService rejected the API key (HTTP %s)", status)
+            raise ProviderError("Routing service is unavailable")
         if status == 429:
             raise ProviderError("Routing service is busy, please try again shortly")
-        if unroutable_is_not_found and status in (400, 404):
-            raise RouteNotFound("No drivable route found for those points")
         if status >= 400:
+            code = _error_code(response)
+            if unroutable_is_not_found and (status == 404 or code in NO_ROUTE_ERROR_CODES):
+                raise RouteNotFound("No drivable route found for those points")
+            logger.warning("OpenRouteService HTTP %s, error code %s", status, code)
             raise ProviderError("Routing service is unavailable")
         try:
             return response.json()
         except ValueError as error:
             raise ProviderError("Routing service returned an unexpected response") from error
+
+
+def _error_code(response: httpx.Response) -> int | None:
+    try:
+        error = response.json().get("error")
+        code = error.get("code") if isinstance(error, dict) else None
+    except (ValueError, AttributeError):
+        return None
+    return code if isinstance(code, int) else None
 
 
 def _parse_route(data: dict) -> RouteOption:

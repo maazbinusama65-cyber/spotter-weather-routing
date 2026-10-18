@@ -83,11 +83,14 @@ def test_route_without_steps_still_works_with_constant_speed():
 
 
 @pytest.mark.parametrize("status", [401, 403])
-def test_rejected_key_gives_a_clear_provider_error(status):
+def test_rejected_key_is_reported_generically_to_users_and_in_detail_to_the_log(status, caplog):
     client = client_for(lambda r: json_response({"error": "nope"}, status))
 
-    with pytest.raises(ProviderError, match="API key"):
+    with pytest.raises(ProviderError, match="unavailable") as info:
         client.route(WAYPOINTS)
+
+    assert "key" not in str(info.value).lower()
+    assert "rejected the API key" in caplog.text
 
 
 def test_rate_limit_is_reported_as_busy():
@@ -104,6 +107,17 @@ def test_unroutable_points_raise_route_not_found(status):
 
     with pytest.raises(RouteNotFound):
         client.route(WAYPOINTS)
+
+
+def test_other_bad_requests_are_provider_errors_not_route_not_found(caplog):
+    body = {"error": {"code": 2004, "message": "Request parameters exceed the server limits"}}
+    client = client_for(lambda r: json_response(body, 400))
+
+    with pytest.raises(ProviderError) as info:
+        client.route(WAYPOINTS)
+
+    assert not isinstance(info.value, RouteNotFound)
+    assert "2004" in caplog.text
 
 
 def test_server_error_is_a_provider_error_but_not_route_not_found():
@@ -137,8 +151,10 @@ def test_missing_api_key_fails_fast_without_calling_the_network():
         api_key="", timeout=5, http=httpx.Client(transport=httpx.MockTransport(handler))
     )
 
-    with pytest.raises(ProviderError, match="not configured"):
+    with pytest.raises(ProviderError, match="not configured") as info:
         client.route(WAYPOINTS)
+
+    assert "ORS_API_KEY" not in str(info.value)
 
 
 GEOCODE_RESPONSE = {

@@ -1,6 +1,7 @@
 """Open-Meteo adapter: hourly wind, rain and snow forecasts, normalized to mph and in/hr."""
 
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 
 import httpx
@@ -12,6 +13,7 @@ from .types import ProviderError
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 MAX_POINTS_PER_REQUEST = 50
+MAX_PARALLEL_REQUESTS = 4
 HOURLY_VARIABLES = "wind_speed_10m,rain,showers,snowfall"
 _TIME_FORMAT = "%Y-%m-%dT%H:%M"
 
@@ -24,28 +26,36 @@ class OpenMeteoClient:
         self._url = url
 
     def forecasts(self, points: Sequence[LatLon], start: date, end: date) -> list[HourlyForecast]:
-        results: list[HourlyForecast] = []
-        for first in range(0, len(points), MAX_POINTS_PER_REQUEST):
-            batch = points[first : first + MAX_POINTS_PER_REQUEST]
-            data = self._get(
-                {
-                    **_coordinate_params(batch),
-                    "hourly": HOURLY_VARIABLES,
-                    "wind_speed_unit": "mph",
-                    "precipitation_unit": "inch",
-                    "timezone": "UTC",
-                    "start_date": start.isoformat(),
-                    "end_date": end.isoformat(),
-                }
-            )
-            locations = data if isinstance(data, list) else [data]
-            if len(locations) != len(batch):
-                raise ProviderError("Weather service returned an unexpected response")
-            try:
-                results.extend(_parse_location(location) for location in locations)
-            except (KeyError, TypeError, ValueError) as error:
-                raise ProviderError("Weather service returned an unexpected response") from error
-        return results
+        batches = [
+            points[first : first + MAX_POINTS_PER_REQUEST]
+            for first in range(0, len(points), MAX_POINTS_PER_REQUEST)
+        ]
+        if not batches:
+            return []
+        workers = min(len(batches), MAX_PARALLEL_REQUESTS)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            fetched = pool.map(lambda batch: self._fetch_batch(batch, start, end), batches)
+            return [forecast for batch in fetched for forecast in batch]
+
+    def _fetch_batch(self, batch: Sequence[LatLon], start: date, end: date) -> list[HourlyForecast]:
+        data = self._get(
+            {
+                **_coordinate_params(batch),
+                "hourly": HOURLY_VARIABLES,
+                "wind_speed_unit": "mph",
+                "precipitation_unit": "inch",
+                "timezone": "UTC",
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+            }
+        )
+        locations = data if isinstance(data, list) else [data]
+        if len(locations) != len(batch):
+            raise ProviderError("Weather service returned an unexpected response")
+        try:
+            return [_parse_location(location) for location in locations]
+        except (KeyError, TypeError, ValueError) as error:
+            raise ProviderError("Weather service returned an unexpected response") from error
 
     def timezone_name(self, point: LatLon) -> str:
         data = self._get(
@@ -90,13 +100,20 @@ def _parse_location(location: dict) -> HourlyForecast:
     times = tuple(
         datetime.strptime(stamp, _TIME_FORMAT).replace(tzinfo=UTC) for stamp in hourly["time"]
     )
-    rain = tuple(
+    rain = [
         None if r is None else r + (s or 0.0)
         for r, s in zip(hourly["rain"], hourly["showers"], strict=True)
-    )
+    ]
     return HourlyForecast(
         times=times,
-        wind_mph=tuple(hourly["wind_speed_10m"]),
-        rain_in_hr=rain,
-        snow_in_hr=tuple(hourly["snowfall"]),
+        wind_mph=tuple(hourly["wind_speed_10m"]),  # instantaneous at the timestamp
+        rain_in_hr=_hour_starting_at(rain),
+        snow_in_hr=_hour_starting_at(hourly["snowfall"]),
     )
+
+
+def _hour_starting_at(preceding_hour_totals: list) -> tuple:
+    """Open-Meteo reports precipitation at HH:00 as the total for the hour *ending* then.
+    Shift it so each value describes the hour starting at its timestamp, matching how a
+    truck passing a checkpoint at HH:xx experiences it. The last hour has no value."""
+    return (*preceding_hour_totals[1:], None)

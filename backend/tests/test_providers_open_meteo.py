@@ -64,14 +64,28 @@ def test_recorded_response_parses_into_one_forecast_per_point():
     assert forecasts[0].wind_mph[1] == FIXTURE[0]["hourly"]["wind_speed_10m"][1]
 
 
-def test_rain_is_rain_plus_showers():
-    payload = [location(2, [10.0, 12.0], [0.1, 0.0], [0.05, 0.2], [0.0, 0.0])]
+def test_rain_is_rain_plus_showers_for_the_hour_starting_at_each_timestamp():
+    # Open-Meteo precipitation at HH:00 is the total for the hour *ending* at HH:00, so the
+    # adapter shifts it to describe the hour starting at each timestamp.
+    payload = [location(3, [10.0, 12.0, 14.0], [0.0, 0.1, 0.3], [0.0, 0.05, 0.2], [0.0] * 3)]
 
     forecast = client_for(lambda r: httpx.Response(200, json=payload)).forecasts(
         [(1.0, 1.0)], DAY, DAY
     )[0]
 
-    assert forecast.rain_in_hr == pytest.approx((0.15, 0.2))
+    assert forecast.rain_in_hr[:2] == pytest.approx((0.15, 0.5))
+    assert forecast.rain_in_hr[2] is None  # no following hour to describe the last one
+    assert forecast.wind_mph == (10.0, 12.0, 14.0)  # wind is instantaneous, not shifted
+
+
+def test_snowfall_is_also_shifted_to_the_hour_starting_at_each_timestamp():
+    payload = [location(3, [1.0] * 3, [0.0] * 3, [0.0] * 3, [0.0, 0.7, 2.5])]
+
+    forecast = client_for(lambda r: httpx.Response(200, json=payload)).forecasts(
+        [(1.0, 1.0)], DAY, DAY
+    )[0]
+
+    assert forecast.snow_in_hr == (0.7, 2.5, None)
 
 
 def test_single_location_response_is_a_dict_not_a_list():
@@ -82,18 +96,18 @@ def test_single_location_response_is_a_dict_not_a_list():
     )
 
     assert len(forecasts) == 1
-    assert forecasts[0].snow_in_hr == (0.5, 0.0)
+    assert forecasts[0].wind_mph == (10.0, 12.0)
 
 
 def test_null_values_stay_missing():
-    payload = [location(2, [None, 12.0], [0.0, None], [0.0, 0.0], [0.0, 0.0])]
+    payload = [location(3, [None, 12.0, 9.0], [0.0, None, 0.4], [0.0] * 3, [0.0] * 3)]
 
     forecast = client_for(lambda r: httpx.Response(200, json=payload)).forecasts(
         [(1.0, 1.0)], DAY, DAY
     )[0]
 
-    assert forecast.wind_mph == (None, 12.0)
-    assert forecast.rain_in_hr == (0.0, None)
+    assert forecast.wind_mph == (None, 12.0, 9.0)
+    assert forecast.rain_in_hr == (None, 0.4, None)
 
 
 def test_many_points_are_split_into_batches_and_order_is_preserved():
