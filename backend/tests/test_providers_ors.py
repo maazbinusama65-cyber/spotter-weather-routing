@@ -197,3 +197,24 @@ def test_geocode_skips_features_without_usable_coordinates():
     payload = {"features": [{"geometry": None, "properties": {"label": "bad"}}]}
 
     assert client_for(lambda r: json_response(payload)).geocode("x") == []
+
+
+LIVE_FIXTURE = json.loads(
+    (Path(__file__).parent.parent / "fixtures" / "ors_directions_live.json").read_text()
+)
+
+
+def test_real_ors_response_parses_with_a_complete_duration_profile():
+    """A genuine driving-hgv response (Denver to Fort Collins) recorded from the live API."""
+    option = client_for(lambda r: json_response(LIVE_FIXTURE)).route(
+        [(39.7392, -104.9847), (40.5853, -105.0844)]
+    )
+
+    geometry = option.geometry
+    profile = geometry.cumulative_duration_s
+    assert len(geometry.coordinates) == 563
+    assert profile is not None and len(profile) == 563
+    assert profile[0] == 0
+    assert profile[-1] == pytest.approx(geometry.duration_s, rel=0.01)
+    assert list(profile) == sorted(profile)
+    assert option.via

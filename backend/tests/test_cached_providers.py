@@ -116,3 +116,13 @@ def test_geocoding_is_cached_ignoring_case_and_spacing(cache):
     routing.geocode("  denver ")
 
     assert len(inner_calls) == 1
+
+
+def test_cache_keys_are_safe_for_memcached_style_backends(cache):
+    import warnings
+
+    routing = CachedRouting(FakeRouting(), cache)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # Django warns (CacheKeyWarning) on spaces in keys
+        routing.geocode("Denver, CO")

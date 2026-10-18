@@ -5,6 +5,7 @@ keep warm requests fast. Failures are never cached. Backed by Django's cache fra
 so moving from in-memory to Redis is a settings change.
 """
 
+import hashlib
 from collections.abc import Sequence
 from datetime import date
 
@@ -68,7 +69,8 @@ class CachedRouting:
         return option
 
     def geocode(self, text: str) -> list[Place]:
-        key = "geo:" + " ".join(text.lower().split())
+        normalized = " ".join(text.lower().split())
+        key = "geo:" + hashlib.sha1(normalized.encode()).hexdigest()  # no spaces or odd characters
         places = self._cache.get(key)
         if places is None:
             places = self._inner.geocode(text)
