@@ -18,14 +18,27 @@ def calm(lat: float, lon: float, when: datetime) -> tuple[float, float, float]:
 class FakeRouting:
     """Routes are straight lines between the waypoints, driven at a constant speed."""
 
-    def __init__(self, speed_mph: float = 50.0, fail_via: bool = False, fail_base: bool = False):
+    def __init__(
+        self,
+        speed_mph: float = 50.0,
+        fail_via: bool = False,
+        fail_base: bool = False,
+        via_error: Exception | None = None,
+        base_error: Exception | None = None,
+    ):
         self.speed_mph = speed_mph
         self.fail_via = fail_via
         self.fail_base = fail_base
+        self.via_error = via_error
+        self.base_error = base_error
         self.calls: list[tuple[LatLon, ...]] = []
 
     def route(self, waypoints: Sequence[LatLon]) -> RouteOption:
         self.calls.append(tuple(waypoints))
+        if len(waypoints) > 2 and self.via_error:
+            raise self.via_error
+        if len(waypoints) == 2 and self.base_error:
+            raise self.base_error
         if len(waypoints) > 2 and self.fail_via:
             raise RouteNotFound("no route through that point")
         if len(waypoints) == 2 and self.fail_base:

@@ -9,6 +9,8 @@ from rest_framework import serializers
 ALLOWED_INTERVALS = (10, 25, 50)
 MAX_LOAD_LB = 100_000
 MIN_PLACE_TEXT = 2
+MAX_PLACE_TEXT = 200
+MIN_DEPARTURE_YEAR, MAX_DEPARTURE_YEAR = 2000, 2100
 
 
 @dataclass(frozen=True)
@@ -23,7 +25,9 @@ class PlaceInput:
 
 def _coordinate(data: dict, key: str, limit: float) -> float:
     value = data.get(key)
-    if isinstance(value, bool) or not isinstance(value, int | float) or math.isnan(value):
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise serializers.ValidationError(f"{key} must be a number")
+    if isinstance(value, float) and math.isnan(value):
         raise serializers.ValidationError(f"{key} must be a number")
     if abs(value) > limit:
         raise serializers.ValidationError(f"{key} must be between -{limit:g} and {limit:g}")
@@ -36,6 +40,8 @@ class PlaceField(serializers.Field):
             text = data.strip()
             if len(text) < MIN_PLACE_TEXT:
                 raise serializers.ValidationError("Enter a place name or choose a suggestion")
+            if len(text) > MAX_PLACE_TEXT:
+                raise serializers.ValidationError("Place text is too long")
             return PlaceInput(text=text)
         if isinstance(data, dict):
             return PlaceInput(
@@ -58,11 +64,14 @@ class AnalyzeRequestSerializer(serializers.Serializer):
 
     def validate_departure(self, value: str) -> datetime:
         try:
-            return datetime.fromisoformat(value.strip())
+            parsed = datetime.fromisoformat(value.strip())
         except ValueError as error:
             raise serializers.ValidationError(
                 "Use an ISO date and time, for example 2026-11-02T08:00"
             ) from error
+        if not MIN_DEPARTURE_YEAR <= parsed.year <= MAX_DEPARTURE_YEAR:
+            raise serializers.ValidationError("Departure year is out of range")
+        return parsed
 
     def validate_interval_miles(self, value: int) -> int:
         if value not in ALLOWED_INTERVALS:

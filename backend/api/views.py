@@ -1,3 +1,4 @@
+from django.core.cache import caches
 from rest_framework import status
 from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
@@ -5,19 +6,24 @@ from rest_framework.throttling import AnonRateThrottle
 
 from .errors import error_response
 from .providers.factory import get_providers
-from .providers.types import ProviderError, RoutingProvider
+from .providers.types import ProviderError, RouteNotFound, RoutingProvider
 from .serializers import AnalyzeRequestSerializer, PlaceInput
 from .services.present import present_analysis
 from .services.trip import TripRequest, TripValidationError, analyze_trip
 
 MIN_GEOCODE_QUERY = 2
+MAX_GEOCODE_QUERY = 200
 
 
-class AnalyzeThrottle(AnonRateThrottle):
+class _Throttle(AnonRateThrottle):
+    cache = caches["throttle"]  # separate store so cache churn cannot reset counters
+
+
+class AnalyzeThrottle(_Throttle):
     scope = "analyze"  # each analysis makes several upstream calls
 
 
-class GeocodeThrottle(AnonRateThrottle):
+class GeocodeThrottle(_Throttle):
     scope = "geocode"
 
 
@@ -47,6 +53,8 @@ def analyze(request):
         analysis = analyze_trip(trip, routing, weather)
     except TripValidationError as error:
         return error_response("invalid_trip", str(error), status.HTTP_400_BAD_REQUEST)
+    except RouteNotFound as error:
+        return error_response("no_route", str(error), status.HTTP_400_BAD_REQUEST)
     except ProviderError as error:
         return error_response("provider_error", str(error), status.HTTP_502_BAD_GATEWAY)
     return Response(present_analysis(analysis))
@@ -56,6 +64,13 @@ def analyze(request):
 @throttle_classes([GeocodeThrottle])
 def geocode(request):
     query = request.query_params.get("q", "").strip()
+    if len(query) > MAX_GEOCODE_QUERY:
+        return error_response(
+            "validation_error",
+            "Search text is too long",
+            status.HTTP_400_BAD_REQUEST,
+            {"q": "Search text is too long"},
+        )
     if len(query) < MIN_GEOCODE_QUERY:
         return error_response(
             "validation_error",
@@ -76,5 +91,5 @@ def _resolve_place(routing: RoutingProvider, place: PlaceInput) -> tuple[float, 
         return place.lat, place.lon
     matches = routing.geocode(place.text)
     if not matches:
-        raise TripValidationError(f"Could not find a place matching '{place.text}'")
+        raise TripValidationError(f"Could not find a place matching '{place.text[:60]}'")
     return matches[0].lat, matches[0].lon

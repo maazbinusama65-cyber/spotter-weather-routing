@@ -171,3 +171,59 @@ def test_alternatives_are_requested_through_offset_via_points_around_the_base_ro
     assert base_call == (ORIGIN, DESTINATION)
     assert via_calls and all(len(call) == 3 and call[0] == ORIGIN for call in via_calls)
     assert {round(call[1][0] / DEG) for call in via_calls} >= {24, -24}  # left and right of route
+
+
+def test_forecast_request_is_clamped_to_the_forecast_horizon():
+    from datetime import date
+
+    departure = NOW + timedelta(days=14, hours=20)  # 2026-11-16 08:00Z, last forecast day
+    slow = FakeRouting(speed_mph=10)  # a 20 hour trip runs past the end of the forecast
+    weather = FakeWeather()
+
+    analysis = run(request(departure=departure), routing=slow, weather=weather)
+
+    assert weather.calls[0][2] <= date(2026, 11, 16)
+    assert analysis.routes[0].summary.unknown_miles > 0
+    assert any("unavailable" in w.lower() for w in analysis.warnings)
+
+
+def test_failed_alternative_lookups_are_reported_apart_from_geography_limits():
+    routing = FakeRouting(via_error=ProviderError("Routing service is busy, please try again"))
+
+    analysis = run(routing=routing)
+
+    assert [r.route_id for r in analysis.routes] == ["r1"]
+    assert any("failed" in w.lower() for w in analysis.warnings)
+
+
+def test_unroutable_alternatives_are_not_reported_as_failures():
+    analysis = run(routing=FakeRouting(fail_via=True))
+
+    assert not any("failed" in w.lower() for w in analysis.warnings)
+
+
+def test_trips_beyond_the_distance_limit_are_rejected_before_any_weather_is_fetched():
+    weather = FakeWeather()
+
+    with pytest.raises(TripValidationError, match="longer than"):
+        run(request(destination=(0.0, 5000 * DEG)), weather=weather)
+
+    assert weather.calls == []
+
+
+def test_departure_that_overflows_the_calendar_is_a_validation_error():
+    from datetime import timezone
+
+    extreme = datetime(1, 1, 1, 0, 0, tzinfo=timezone(timedelta(hours=14)))
+
+    with pytest.raises(TripValidationError, match="departure"):
+        run(request(departure=extreme))
+
+
+def test_unknown_timezone_name_falls_back_to_utc():
+    analysis = run(
+        request(departure=datetime(2026, 11, 2, 8, 0)), weather=FakeWeather(timezone="Mars/Olympus")
+    )
+
+    assert analysis.timezone == "UTC"
+    assert analysis.departure_utc == datetime(2026, 11, 2, 8, 0, tzinfo=UTC)

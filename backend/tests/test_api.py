@@ -196,3 +196,52 @@ def test_geocode_provider_failure_is_a_502(client, providers):
     response = client.get("/api/geocode", {"q": "Denver"})
 
     assert response.status_code == 502
+
+
+def test_base_route_not_found_is_a_400_not_a_gateway_error(client, providers):
+    from api.providers.types import RouteNotFound
+
+    routing, _ = providers
+    routing.base_error = RouteNotFound("No drivable route found for those points")
+
+    response = post(client)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "no_route"
+
+
+def test_absurdly_large_coordinates_are_a_400_not_a_server_error(client, providers):
+    response = post(client, origin={"lat": 10**400, "lon": 0})
+
+    assert response.status_code == 400
+    assert "origin" in response.json()["error"]["fields"]
+
+
+@pytest.mark.parametrize("departure", ["0001-01-01T00:00+05:00", "9999-12-31T23:59-05:00"])
+def test_departures_outside_a_sane_year_range_are_rejected(client, providers, departure):
+    response = post(client, departure=departure)
+
+    assert response.status_code == 400
+    assert "departure" in response.json()["error"]["fields"]
+
+
+def test_overlong_place_text_is_rejected(client, providers):
+    response = post(client, origin="x" * 500)
+
+    assert response.status_code == 400
+    assert "origin" in response.json()["error"]["fields"]
+
+
+def test_overlong_geocode_query_is_rejected(client, providers):
+    assert client.get("/api/geocode", {"q": "x" * 500}).status_code == 400
+
+
+def test_spoofed_forwarded_for_headers_do_not_bypass_the_throttle(client, providers):
+    statuses = [
+        client.post(
+            "/api/analyze", body(), format="json", HTTP_X_FORWARDED_FOR=f"10.0.0.{i}"
+        ).status_code
+        for i in range(12)
+    ]
+
+    assert statuses.count(429) >= 1
