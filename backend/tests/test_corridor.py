@@ -129,3 +129,26 @@ def test_zero_hours_is_an_empty_series():
 def test_negative_hours_are_rejected(bad):
     with pytest.raises(ValueError, match="hours"):
         hourly_levels(forecast([5.0]), START, bad, load_lb=10_000)
+
+
+def test_thinning_keeps_the_first_and_last_points_so_the_destination_is_never_dropped():
+    routes = [eastbound(400, lat=i * 0.3) for i in range(8)]
+
+    points = corridor_points(routes, min_spacing_miles=10, max_points=40)
+
+    assert points[0] == (0.0, 0.0)
+    assert points[-1] == (2.1, round(400 * DEG, 1))  # end of the last route
+
+
+def test_thinning_to_a_tiny_cap_still_works():
+    routes = [eastbound(400, lat=i * 0.3) for i in range(3)]
+
+    assert len(corridor_points(routes, min_spacing_miles=10, max_points=1)) == 1
+    assert corridor_points(routes, min_spacing_miles=10, max_points=0) == []
+    assert len(corridor_points(routes, min_spacing_miles=10, max_points=2)) == 2
+
+
+def test_a_zero_length_route_yields_its_single_point():
+    route = RouteGeometry(coordinates=((5.0, 5.0), (5.0, 5.0)), duration_s=0)
+
+    assert corridor_points([route]) == [(5.0, 5.0)]

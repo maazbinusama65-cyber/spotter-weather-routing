@@ -144,3 +144,40 @@ def test_without_alternatives_the_main_route_corridor_is_still_returned():
 
     assert len(heatmap.points) > 5
     assert all(abs(p.lat) < 0.1 for p in heatmap.points)
+
+
+def test_the_forecast_request_covers_hour_48_even_for_a_late_evening_departure():
+    from datetime import date
+
+    weather = FakeWeather()
+    departure = datetime(2026, 11, 2, 23, 30, tzinfo=UTC)  # window runs to 23:00 on the 4th
+
+    run(request(departure=departure), weather=weather)
+
+    # Precipitation is shifted back an hour, so hour 48 needs the 00:00 value of the 5th.
+    assert weather.calls[0][2] >= date(2026, 11, 5)
+
+
+def test_a_trailing_forecast_gap_is_reported_with_its_length():
+    from api.services.heatmap import HeatPoint, _warnings
+
+    points = (HeatPoint(0, 0, "000--"), HeatPoint(1, 1, "0000-"))
+
+    assert "last 2 hours" in _warnings(points)[0]
+
+
+def test_an_interior_gap_is_not_described_as_the_forecast_ending():
+    from api.services.heatmap import HeatPoint, _warnings
+
+    points = (HeatPoint(0, 0, "0-000"),)
+
+    warnings = _warnings(points)
+    assert len(warnings) == 1
+    assert "last" not in warnings[0]
+    assert "missing" in warnings[0]
+
+
+def test_complete_data_has_no_warning():
+    from api.services.heatmap import HeatPoint, _warnings
+
+    assert _warnings((HeatPoint(0, 0, "01234"),)) == []

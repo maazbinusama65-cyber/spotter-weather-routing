@@ -45,4 +45,8 @@ def _distances(total: float, spacing: float) -> list[float]:
 def _thin(points: list[LatLon], max_points: int) -> list[LatLon]:
     if len(points) <= max_points:
         return points
-    return [points[i * len(points) // max_points] for i in range(max_points)]
+    if max_points <= 1:
+        return points[:max_points]
+    # Spread over the whole range so both the origin and the final point survive.
+    last = len(points) - 1
+    return [points[round(i * last / (max_points - 1))] for i in range(max_points)]

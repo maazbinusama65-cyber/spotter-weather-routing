@@ -54,10 +54,17 @@ def build_heatmap(
 
 
 def _warnings(points: tuple[HeatPoint, ...]) -> list[str]:
-    missing = max((point.levels.count(UNKNOWN_LEVEL) for point in points), default=0)
-    if missing == 0:
-        return []
-    return [
-        f"The weather forecast does not cover the last {missing} hour"
-        f"{'s' if missing != 1 else ''} of this window; those hours are shown as unknown"
-    ]
+    trailing = max((_trailing_unknown(point.levels) for point in points), default=0)
+    if trailing:
+        plural = "s" if trailing != 1 else ""
+        return [
+            f"The weather forecast does not cover the last {trailing} hour{plural} "
+            "of this window; those hours are shown as unknown"
+        ]
+    if any(UNKNOWN_LEVEL in point.levels for point in points):
+        return ["Weather data is missing for some hours; they are shown as unknown"]
+    return []
+
+
+def _trailing_unknown(levels: str) -> int:
+    return len(levels) - len(levels.rstrip(UNKNOWN_LEVEL))
