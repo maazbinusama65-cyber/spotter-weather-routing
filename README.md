@@ -36,6 +36,7 @@ npm run dev
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/analyze` | Find up to 3 routes, score weather risk at each ETA, recommend one |
+| `POST` | `/api/heatmap` | Corridor weather grid with a 0-48 hour risk series per point, for the forecast slider |
 | `GET` | `/api/geocode?q=` | Place suggestions for the origin and destination inputs |
 | `GET` | `/api/health` | Liveness probe |
 
@@ -55,6 +56,19 @@ npm run dev
 - `departure` without an offset is read in the **origin's local time zone**; with an offset (or `Z`) it is used as given.
 - `interval_miles` is 10, 25 or 50. `load_lb` is 0 to 100,000.
 - Errors use one envelope: `{"error": {"code", "message", "fields"?}}` (`validation_error`, `invalid_trip`, `provider_error`).
+
+`POST /api/heatmap` takes the same body as analyze (without `interval_miles`) and returns:
+
+```json
+{
+  "start": "2026-11-02T14:00:00Z",
+  "hours": 49,
+  "points": [{"lat": 39.7, "lon": -105.0, "levels": "000012..."}],
+  "warnings": []
+}
+```
+
+`levels` has one character per forecast hour from `start` (the departure rounded down to the hour): the risk level `0`-`4` for that location at that hour, or `-` when the forecast does not cover it. The grid is the 0.1 degree cells along all candidate routes (at most 150), so the slider only changes which character each point reads and needs no further requests.
 
 ## Risk rules and assumptions
 

@@ -7,6 +7,7 @@ from engine.geo import simplify_polyline
 from engine.levels import RiskLevel
 from engine.thresholds import RULESET_VERSION
 
+from .heatmap import Heatmap
 from .trip import AnalyzedRoute, TripAnalysis
 
 MAP_SIMPLIFY_TOLERANCE_DEGREES = 0.0005  # about 50 m; plenty for drawing on a map
@@ -17,7 +18,7 @@ def present_analysis(analysis: TripAnalysis) -> dict:
     request = analysis.request
     return {
         "ruleset_version": RULESET_VERSION,
-        "risk_levels": [{"value": int(level), "label": level.label} for level in RiskLevel],
+        "risk_levels": _risk_levels(),
         "timezone": analysis.timezone,
         "departure": _iso(analysis.departure_utc),
         "origin": {"lat": request.origin[0], "lon": request.origin[1]},
@@ -33,6 +34,23 @@ def present_analysis(analysis: TripAnalysis) -> dict:
         },
         "warnings": analysis.warnings,
     }
+
+
+def present_heatmap(heatmap: Heatmap) -> dict:
+    return {
+        "start": _iso(heatmap.start),
+        "hours": heatmap.hours,
+        "timezone": heatmap.timezone,
+        "risk_levels": _risk_levels(),
+        "points": [
+            {"lat": point.lat, "lon": point.lon, "levels": point.levels} for point in heatmap.points
+        ],
+        "warnings": heatmap.warnings,
+    }
+
+
+def _risk_levels() -> list[dict]:
+    return [{"value": int(level), "label": level.label} for level in RiskLevel]
 
 
 def _iso(moment: datetime) -> str:

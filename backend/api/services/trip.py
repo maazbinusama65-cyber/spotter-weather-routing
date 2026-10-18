@@ -3,7 +3,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from api.providers.types import (
@@ -76,16 +76,10 @@ def analyze_trip(
     now: datetime | None = None,
 ) -> TripAnalysis:
     now = now or datetime.now(UTC)
-    if haversine_miles(request.origin, request.destination) < MIN_TRIP_MILES:
-        raise TripValidationError("Origin and destination are the same place")
-
-    departure_utc, timezone = _resolve_departure(
-        request.departure, weather.timezone_name(request.origin)
-    )
-    _check_departure_window(departure_utc, now)
+    departure_utc, timezone = resolve_trip_start(request, weather, now)
 
     warnings: list[str] = []
-    options = _find_routes(request, routing, warnings)
+    options = find_routes(request, routing, warnings)
     checkpoints = [
         sample_checkpoints(option.geometry, request.interval_miles, departure_utc)
         for option in options
@@ -103,6 +97,23 @@ def analyze_trip(
     recommendation = rank_routes([route.summary for route in routes])
     warnings.extend(_weather_warnings(routes, recommendation))
     return TripAnalysis(request, departure_utc, timezone, tuple(routes), recommendation, warnings)
+
+
+def resolve_trip_start(
+    request: TripRequest, weather: WeatherProvider, now: datetime
+) -> tuple[datetime, str]:
+    """Check the trip's basics; return the departure in UTC and the origin's time zone."""
+    if haversine_miles(request.origin, request.destination) < MIN_TRIP_MILES:
+        raise TripValidationError("Origin and destination are the same place")
+    departure_utc, timezone = _resolve_departure(
+        request.departure, weather.timezone_name(request.origin)
+    )
+    _check_departure_window(departure_utc, now)
+    return departure_utc, timezone
+
+
+def last_forecast_day(now: datetime) -> date:
+    return (now + timedelta(days=FORECAST_DAYS_AHEAD)).date()
 
 
 def _resolve_departure(departure: datetime, timezone: str) -> tuple[datetime, str]:
@@ -129,7 +140,7 @@ def _check_departure_window(departure_utc: datetime, now: datetime) -> None:
         )
 
 
-def _find_routes(
+def find_routes(
     request: TripRequest, routing: RoutingProvider, warnings: list[str]
 ) -> list[RouteOption]:
     base = routing.route([request.origin, request.destination])
@@ -181,9 +192,9 @@ def _fetch_forecasts(
     cells = sorted({_cell(cp.lat, cp.lon) for cp in all_checkpoints})
     etas = [cp.eta for cp in all_checkpoints]
     # Never ask beyond the forecast; ETAs past it simply have no weather (unknown miles).
-    last_forecast_day = (now + timedelta(days=FORECAST_DAYS_AHEAD)).date()
-    start = min(min(etas).date(), last_forecast_day)
-    end = min((max(etas) + timedelta(hours=1)).date(), last_forecast_day)
+    final_day = last_forecast_day(now)
+    start = min(min(etas).date(), final_day)
+    end = min((max(etas) + timedelta(hours=1)).date(), final_day)
     return dict(zip(cells, weather.forecasts(cells, start, end), strict=True))
 
 
