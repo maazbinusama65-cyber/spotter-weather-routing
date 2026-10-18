@@ -48,6 +48,38 @@ def point_at_distance(
     return lat1 + (lat2 - lat1) * fraction, lon1 + (lon2 - lon1) * fraction, segment, fraction
 
 
+def simplify_polyline(
+    coordinates: tuple[LatLon, ...], tolerance_degrees: float
+) -> tuple[LatLon, ...]:
+    """Douglas-Peucker simplification (planar, in degrees) for sending routes to the map.
+    Iterative so very long routes cannot hit the recursion limit."""
+    if len(coordinates) <= 2:
+        return coordinates
+
+    keep = [False] * len(coordinates)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(coordinates) - 1)]
+    while stack:
+        start, end = stack.pop()
+        farthest, farthest_distance = -1, tolerance_degrees
+        for i in range(start + 1, end):
+            distance = _segment_distance(coordinates[i], coordinates[start], coordinates[end])
+            if distance > farthest_distance:
+                farthest, farthest_distance = i, distance
+        if farthest != -1:
+            keep[farthest] = True
+            stack.extend([(start, farthest), (farthest, end)])
+    return tuple(point for point, kept in zip(coordinates, keep, strict=True) if kept)
+
+
+def _segment_distance(point: LatLon, start: LatLon, end: LatLon) -> float:
+    (py, px), (ay, ax), (by, bx) = point, start, end
+    dy, dx = by - ay, bx - ax
+    length_sq = dx * dx + dy * dy
+    t = 0.0 if length_sq == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_sq))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
 def cumulative_miles(coordinates: tuple[LatLon, ...]) -> tuple[float, ...]:
     """Distance from the first vertex to each vertex along the polyline."""
     total = 0.0
