@@ -20,6 +20,7 @@ BASE_URL = "https://api.openrouteservice.org"
 HGV_PROFILE = "driving-hgv"
 GEOCODE_RESULTS = 5
 MAX_VIA_ROADS = 3
+MIN_VIA_SHARE = 0.08  # a road must carry this share of the route to be named
 # ORS error codes meaning "no route / no routable point" rather than a bad request
 NO_ROUTE_ERROR_CODES = {2009, 2010}
 
@@ -145,14 +146,22 @@ def _vertex_durations(
 
 
 def _main_roads(steps: list[dict]) -> str:
+    """Roads that carry a real share of the route, in driving order. Local streets at the
+    ends are left out; if no road dominates, the single longest one is named."""
     distances: dict[str, float] = {}
     for step in steps:
         name = (step.get("name") or "").strip()
         if name and name != "-":
             distances[name] = distances.get(name, 0.0) + float(step.get("distance", 0))
-    longest = sorted(distances, key=lambda n: -distances[n])[:MAX_VIA_ROADS]
-    in_route_order = [name for name in distances if name in longest]
-    return ", ".join(in_route_order)
+    if not distances:
+        return ""
+
+    total = sum(float(step.get("distance", 0)) for step in steps) or sum(distances.values())
+    major = [name for name, distance in distances.items() if distance / total >= MIN_VIA_SHARE]
+    if not major:
+        major = [max(distances, key=lambda name: distances[name])]
+    longest = sorted(major, key=lambda name: -distances[name])[:MAX_VIA_ROADS]
+    return ", ".join(name for name in distances if name in longest)
 
 
 def _parse_places(data: dict) -> list[Place]:

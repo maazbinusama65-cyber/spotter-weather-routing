@@ -218,3 +218,21 @@ def test_real_ors_response_parses_with_a_complete_duration_profile():
     assert profile[-1] == pytest.approx(geometry.duration_s, rel=0.01)
     assert list(profile) == sorted(profile)
     assert option.via
+
+
+def test_via_leaves_out_local_streets_that_carry_little_of_the_route():
+    payload = json.loads(json.dumps(FIXTURE))
+    steps = payload["features"][0]["properties"]["segments"][0]["steps"]
+    steps[1]["name"], steps[1]["distance"] = "Elm Street", 300.0  # under 1% of the route
+
+    option = client_for(lambda r: json_response(payload)).route(WAYPOINTS)
+
+    assert option.via == "I 70, I 76"
+
+
+def test_via_falls_back_to_the_longest_road_when_none_dominates():
+    from api.providers.ors import _main_roads
+
+    steps = [{"name": f"Road {i}", "distance": 100.0 + i} for i in range(25)]
+
+    assert _main_roads(steps) == "Road 24"
