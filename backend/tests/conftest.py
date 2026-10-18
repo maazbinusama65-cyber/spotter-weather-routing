@@ -1,10 +1,12 @@
 import pytest
-from django.core.cache import cache
+from django.core.cache import caches
 
 
 @pytest.fixture(autouse=True)
-def clear_default_cache():
-    """Throttle counters live in the default cache; keep tests independent."""
-    cache.clear()
+def clear_caches():
+    """Throttle counters and cached lookups live in process memory; keep tests independent."""
+    for cache in caches.all():
+        cache.clear()
     yield
-    cache.clear()
+    for cache in caches.all():
+        cache.clear()

@@ -11,7 +11,8 @@ REPO_ROOT = BASE_DIR.parent
 load_dotenv(REPO_ROOT / ".env")
 
 ENVIRONMENT = os.getenv("DJANGO_ENV", "development")
-IS_PRODUCTION = ENVIRONMENT == "production"
+# Fail safe: a Render deploy is production even if DJANGO_ENV was forgotten.
+IS_PRODUCTION = ENVIRONMENT == "production" or os.getenv("RENDER") == "true"
 DEBUG = not IS_PRODUCTION
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
@@ -46,7 +47,16 @@ DATABASES: dict = {}
 
 # In-memory cache is enough for a single instance. Swapping in Redis later is
 # a settings change only.
-CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+_LOCMEM = "django.core.cache.backends.locmem.LocMemCache"
+CACHES = {
+    # forecasts, timezones: many small entries
+    "default": {"BACKEND": _LOCMEM, "LOCATION": "default", "OPTIONS": {"MAX_ENTRIES": 5000}},
+    # routes hold long polylines, so keep few of them and do not let them evict anything else
+    "routes": {"BACKEND": _LOCMEM, "LOCATION": "routes", "OPTIONS": {"MAX_ENTRIES": 100}},
+    # rate-limit counters must not be evictable by cache churn
+    "throttle": {"BACKEND": _LOCMEM, "LOCATION": "throttle", "OPTIONS": {"MAX_ENTRIES": 10000}},
+}
+# Counters are per process, so run a single gunicorn worker with threads (see Dockerfile).
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
@@ -56,6 +66,8 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "analyze": "10/min", "geocode": "60/min"},
     "EXCEPTION_HANDLER": "api.errors.api_exception_handler",
+    # Trusted proxy hops in front of Django; stops clients spoofing X-Forwarded-For.
+    "NUM_PROXIES": int(os.getenv("DJANGO_NUM_PROXIES", "1" if IS_PRODUCTION else "0")),
 }
 
 STATIC_URL = "/static/"
@@ -75,3 +87,14 @@ if IS_PRODUCTION:
 USE_TZ = True
 TIME_ZONE = "UTC"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "loggers": {
+        "api": {"handlers": ["console"], "level": "INFO"},
+        "django.request": {"handlers": ["console"], "level": "WARNING"},
+    },
+}
