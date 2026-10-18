@@ -9,5 +9,5 @@ export default defineConfig({
     // Provider calls and keys stay on the Django side; the browser only talks to /api.
     proxy: { '/api': 'http://127.0.0.1:8000' },
   },
-  test: { environment: 'node' },
+  test: { environment: 'jsdom', globals: false },
 })
