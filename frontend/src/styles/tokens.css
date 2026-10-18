@@ -1,0 +1,41 @@
+/*
+ * Design tokens. One accent (navy ink); risk colours are the only chroma and are
+ * injected from src/lib/risk.ts as --risk-0 .. --risk-4 and --risk-unknown.
+ * Shape rule: panels and cards use --radius, controls use --radius-sm, nothing is a pill.
+ * Light theme only: the basemap and risk palette are tuned for it.
+ */
+:root {
+  color-scheme: light;
+
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --ink: #0f1b2d;
+  --ink-2: #3a475a;
+  --ink-3: #566478;
+  --paper: #ffffff;
+  --panel: #f5f6f8;
+  --line: #dde1e7;
+  --line-strong: #bcc5d1;
+
+  --accent: #17304f;
+  --accent-hover: #0d2039;
+  --accent-ink: #ffffff;
+  --accent-wash: #e8edf4;
+
+  --danger: #b4232f;
+  --danger-wash: #fbeceb;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+
+  --shadow-float: 0 1px 2px rgb(15 27 45 / 0.08), 0 10px 28px rgb(15 27 45 / 0.14);
+
+  --desk-width: clamp(360px, 30vw, 440px);
+
+  /* z-index scale */
+  --z-map-overlay: 5;
+  --z-popup: 10;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}

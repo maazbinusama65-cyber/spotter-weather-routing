@@ -1,0 +1,67 @@
+.guide {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.guide__summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.guide__summary:hover {
+  color: var(--accent);
+}
+
+.guide__body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.guide__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.guide__table th,
+.guide__table td {
+  padding: 6px 4px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  font-weight: 400;
+}
+
+.guide__table thead th {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.guide__table tbody th {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.guide__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.guide__rules {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
