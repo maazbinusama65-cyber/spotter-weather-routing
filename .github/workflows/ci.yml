@@ -39,3 +39,21 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t stormline .
+      - name: Smoke test the container
+        run: |
+          docker run -d --name app -p 10000:10000 \
+            -e DJANGO_SECRET_KEY=ci-only-secret-key-ci-only-secret-key-ci-only \
+            -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+            -e DJANGO_SSL_REDIRECT=0 \
+            stormline
+          for i in $(seq 1 30); do curl -fsS http://localhost:10000/api/health && break; sleep 1; done
+          curl -fsS http://localhost:10000/api/health | grep -q '"status":"ok"'
+          curl -fsS http://localhost:10000/ | grep -q '<title>Stormline</title>'
+          curl -fsSI http://localhost:10000/ | grep -qi '^content-security-policy'
+          docker logs app

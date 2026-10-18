@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+frontend/dist
+backend/tests
+backend/fixtures
+backend/.coverage
+README.md

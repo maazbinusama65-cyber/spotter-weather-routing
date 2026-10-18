@@ -1,0 +1,16 @@
+# Render blueprint: one Docker web service that serves the API and the React app.
+services:
+  - type: web
+    name: stormline
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DJANGO_ENV
+        value: production
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_NUM_PROXIES
+        value: "1"
+      - key: ORS_API_KEY
+        sync: false # set in the Render dashboard; never commit it
