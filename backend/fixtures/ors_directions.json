@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "bbox": [-104.99, 39.74, -104.2, 39.8],
+  "features": [
+    {
+      "bbox": [-104.99, 39.74, -104.2, 39.8],
+      "type": "Feature",
+      "properties": {
+        "segments": [
+          {
+            "distance": 50120.0,
+            "duration": 1300.0,
+            "steps": [
+              {"distance": 25000.0, "duration": 600.0, "type": 11, "instruction": "Head east on I 70", "name": "I 70", "way_points": [0, 2]},
+              {"distance": 14000.0, "duration": 300.0, "type": 1, "instruction": "Continue", "name": "-", "way_points": [2, 3]},
+              {"distance": 11120.0, "duration": 400.0, "type": 1, "instruction": "Continue on I 76", "name": "I 76", "way_points": [3, 4]}
+            ]
+          }
+        ],
+        "way_points": [0, 4],
+        "summary": {"distance": 50120.0, "duration": 1300.0}
+      },
+      "geometry": {
+        "coordinates": [
+          [-104.99, 39.74],
+          [-104.8, 39.74],
+          [-104.6, 39.76],
+          [-104.4, 39.78],
+          [-104.2, 39.8]
+        ],
+        "type": "LineString"
+      }
+    }
+  ],
+  "metadata": {
+    "attribution": "openrouteservice.org | OpenStreetMap contributors",
+    "service": "routing",
+    "engine": {"version": "9.0.0"}
+  }
+}

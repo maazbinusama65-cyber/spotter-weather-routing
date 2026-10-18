@@ -1,10 +1,9 @@
 """Place weather checkpoints along a route and work out when the truck reaches each one."""
 
-from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .geo import LatLon, cumulative_miles
+from .geo import LatLon, cumulative_miles, point_at_distance
 
 _END_TOLERANCE_MILES = 1e-9
 
@@ -96,14 +95,7 @@ def _locate(
     route: RouteGeometry, cumulative: tuple[float, ...], distance: float
 ) -> tuple[float, float, float]:
     """Latitude, longitude and elapsed seconds at ``distance`` miles along the route."""
-    last_vertex = len(cumulative) - 1
-    segment = min(max(bisect_right(cumulative, distance) - 1, 0), last_vertex - 1)
-    seg_start, seg_end = cumulative[segment], cumulative[segment + 1]
-    fraction = 0.0 if seg_end == seg_start else (distance - seg_start) / (seg_end - seg_start)
-
-    (lat1, lon1), (lat2, lon2) = route.coordinates[segment], route.coordinates[segment + 1]
-    lat = lat1 + (lat2 - lat1) * fraction
-    lon = lon1 + (lon2 - lon1) * fraction
+    lat, lon, segment, fraction = point_at_distance(route.coordinates, cumulative, distance)
 
     profile = route.cumulative_duration_s
     if profile is None:
