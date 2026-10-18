@@ -123,7 +123,8 @@ def test_many_points_are_split_into_batches_and_order_is_preserved():
 
     forecasts = client_for(handler).forecasts(points, DAY, DAY)
 
-    assert requests == [MAX_POINTS_PER_REQUEST, MAX_POINTS_PER_REQUEST, 5]
+    # batches run in parallel, so arrival order at the server is not deterministic
+    assert sorted(requests) == [5, MAX_POINTS_PER_REQUEST, MAX_POINTS_PER_REQUEST]
     assert [f.wind_mph[0] for f in forecasts] == [p[0] for p in points]
 
 
