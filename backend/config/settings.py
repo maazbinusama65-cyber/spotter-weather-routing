@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.csp import CSP
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,6 +27,9 @@ ALLOWED_HOSTS = [
     for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
     if host.strip()
 ]
+# Render tells the service its public hostname; allow it without extra configuration.
+if os.getenv("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
 
 INSTALLED_APPS = [
     "django.contrib.staticfiles",
@@ -35,6 +39,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Before WhiteNoise, so the policy is also added to the static site it serves.
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -75,6 +81,24 @@ REST_FRAMEWORK = {
     "NUM_PROXIES": int(os.getenv("DJANGO_NUM_PROXIES", "1" if IS_PRODUCTION else "0")),
 }
 
+# Content Security Policy: only our own scripts run. The map needs its tile host, blob
+# workers and inline styles (MapLibre popups and React style attributes).
+_TILE_HOST = "https://tiles.openfreemap.org"
+SECURE_CSP = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    "img-src": [CSP.SELF, "data:", "blob:", _TILE_HOST],
+    "font-src": [CSP.SELF, "data:"],
+    "connect-src": [CSP.SELF, _TILE_HOST],
+    "worker-src": [CSP.SELF, "blob:"],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+    "frame-ancestors": [CSP.NONE],
+}
+X_FRAME_OPTIONS = "DENY"
+
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 # The built React app is served from the site root by WhiteNoise.
@@ -88,6 +112,8 @@ if IS_PRODUCTION:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = os.getenv("DJANGO_SSL_REDIRECT", "1") == "1"
     SECURE_HSTS_SECONDS = 31536000
+    # The host's health probe calls over plain HTTP inside the network.
+    SECURE_REDIRECT_EXEMPT = [r"^api/health$"]
 
 USE_TZ = True
 TIME_ZONE = "UTC"
